@@ -1,3 +1,4 @@
 GitPython
 groq
 python-dotenv
+click

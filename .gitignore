@@ -37,3 +37,4 @@ env/
 htmlcov/
 .pytest_cache/ 
 logs/
+*.log

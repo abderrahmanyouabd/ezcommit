@@ -9,26 +9,23 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-PROMPT = """
+json_structure =    {
+        "file1.extension": "commit message based on the content of diff of file1",
+        "file2.extension": "commit message based on the content of diff of file2"
+    }
 
-Please take the following XML structure that represents file diffs:
-
-```xml
-{0}
-```
-
-Using this xml structure generate a **JSON structure** where the key is the file name and the value is the corresponding commit message based on the diff. Return **only** the JSON structure, with no other explanation.
-
-
-Expected Output Format:
-
-```json
-{
-    "file1.extension": "commit message based on the content of diff of file1",
-    "file2.extension": "commit message based on the content of diff of file2"
-}
-```
-"""
+def get_prompt(xml_str):
+    return f"""
+    Please take the following XML structure that represents file diffs:
+    ```xml
+    {xml_str}
+    ```
+    Using this xml structure generate a JSON structure enclosed with '```' where the key is the file name and the value is the corresponding commit message based on the diff. Return only the JSON structure, with no other explanation.
+    Expected Output Format:
+    ```json
+    {json.dumps(json_structure, indent=2)}
+    ```
+    """
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
@@ -75,7 +72,11 @@ def generate_file_diffs(repo: git.Repo, staged_files: list):
                 diffs[file_path] = diff
         else:
             for file_path in staged_files:
-                diffs[file_path] = f"No commits yet, comparing with empty state for {file_path}"
+                diff_sample = f"""diff --git a/{file_path} b/{file_path}
+new file mode 100644
+index 0000000..e69de29
+""".strip()
+                diffs[file_path] = diff_sample
                 
     except git.exc.InvalidGitRepositoryError:
         ezcommit_logger.error("Invalid Git repository")
@@ -113,7 +114,7 @@ def generate_commit_message(xml_str: str):
             messages=[
                 {
                     "role": "user",
-                    "content": PROMPT.format(xml_str),
+                    "content": get_prompt(xml_str),
                 }
             ],
             model=os.getenv("MODEL_NAME"),
@@ -141,11 +142,14 @@ def commit_staged_files_with_messages(repo: git.Repo, file_commit_dict: dict):
     :param file_commit_dict: Dictionary where keys are file paths and values are commit messages.
     """
     for file_path, commit_message in file_commit_dict.items():
-        repo.index.commit(commit_message, paths=[file_path])
-        
-        ezcommit_logger.info(f"Committed {file_path} with message: '{commit_message}'")
+        try:
+            repo.git.commit("-m", commit_message, file_path)
 
-def ezcommit(repo_path: str):
+            ezcommit_logger.info(f"Committed {file_path} with message: '{commit_message}'")
+        except Exception as e:
+            ezcommit_logger.error(f"Error committing {file_path}: {e}")
+
+def ezcommit(repo_path="."):
     """
     Automate the process of generating commit messages for staged files and committing them.
     :param repo_path: Path to the Git repository.
@@ -168,4 +172,5 @@ def ezcommit(repo_path: str):
 
 
 if __name__ == "__main__":
-    ezcommit(r"C:\Users\HP\Music\ez-commit\TestGround")
+    ezcommit(".")
+    # python.exe .\commit_generator.py
