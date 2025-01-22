@@ -1,4 +1,4 @@
-# EZCommit
+# EffortZeroCommit
 
 Automated Git commit message generator using AI.
 
