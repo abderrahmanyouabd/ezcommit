@@ -6,6 +6,7 @@ from groq import Groq
 import os
 import re
 from dotenv import load_dotenv
+import sys
 
 load_dotenv()
 
@@ -21,6 +22,7 @@ def get_prompt(xml_str):
     {xml_str}
     ```
     Using this xml structure generate a JSON structure enclosed with '```' where the key is the file name and the value is the corresponding commit message based on the diff. Return only the JSON structure, with no other explanation.
+    Use git commits standards and conventions for commit messages.
     Expected Output Format:
     ```json
     {json.dumps(json_structure, indent=2)}
@@ -38,7 +40,6 @@ if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 log_file = os.path.join(log_dir, "ezcommit-generator.log")
 ezcommit_logger.addHandler(FileHandler(log_file, mode='w'))
-ezcommit_logger.info(f"Logging to file: {log_file}")
 
 # Set the log format
 log_format = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -57,7 +58,6 @@ def get_staged_files(repo: git.Repo):
         raise ValueError("The provided path is not a valid Git repository.")
     
     staged_files = repo.git.diff('--name-only', '--staged').split('\n')
-    ezcommit_logger.info(f"Staged files: {staged_files}")
 
     return staged_files
 
@@ -120,7 +120,6 @@ def generate_commit_message(xml_str: str):
             model=os.getenv("MODEL_NAME"),
             stream=False,
         )
-        ezcommit_logger.info(f"Response from LLM: {response.choices[0].message.content}")
         return extract_json_structure(response.choices[0].message.content)
     except Exception as e:
         ezcommit_logger.error(f"Error in generating commit message: {e}")
@@ -154,23 +153,27 @@ def ezcommit(repo_path="."):
     Automate the process of generating commit messages for staged files and committing them.
     :param repo_path: Path to the Git repository.
     """
+    if os.getenv("GROQ_API_KEY") is None:
+        ezcommit_logger.error("API KEY ENV var is Missing. export GROQ_API_KEY=******")
+        raise ValueError("API KEY is Missing")
+    if os.getenv("MODEL_NAME") is None:
+        ezcommit_logger.error("MODEL NAME/ID is Missing. export MODEL_NAME=******")
+        raise ValueError("MODEL NAME/ID ENV var is Missing")
     try:
         repo = git.Repo(repo_path)
         staged_files = get_staged_files(repo)
         ezcommit_logger.info(f"Staged files: {staged_files}")
         diffs = generate_file_diffs(repo, staged_files)
-        ezcommit_logger.info(f"Generated diffs: {diffs}")
         xml_input = create_input_for_llm(diffs)
-        ezcommit_logger.info(f"XML input for LLM: {xml_input}")
         json_message = generate_commit_message(xml_input)
-        ezcommit_logger.info(f"Generated JSON message: {json_message}")
         file_commit_dict = get_json_as_dict(json_message)
         ezcommit_logger.info(f"File commit dictionary: {file_commit_dict}")
         commit_staged_files_with_messages(repo, file_commit_dict)
     except Exception as e:
         ezcommit_logger.error(f"Error in ezcommit process: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
     ezcommit(".")
-    # python.exe .\commit_generator.py
+    sys.exit(0)
