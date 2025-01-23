@@ -2,3 +2,4 @@ GitPython
 groq
 python-dotenv
 click
+json-with-comments

@@ -6,7 +6,7 @@ with open("README.md", encoding="utf-8") as f:
 
 setup(
     name="effort-zero-commit",
-    version="0.1.1",
+    version="0.1.2",
     author="Abderrahman Youabd",
     author_email="youabd50@gmail.com",
     description="Automated Git commit message generator using AI",
@@ -29,7 +29,8 @@ setup(
         "gitpython",
         "groq",
         "python-dotenv",
-        "click"
+        "click",
+        "json-with-comments"
     ],
     entry_points={
         'console_scripts': [
