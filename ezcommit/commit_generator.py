@@ -135,9 +135,10 @@ def get_json_as_dict(json_str: str):
 
 def commit_staged_files_with_messages(repo: git.Repo, file_commit_dict: dict):
     try:
-        commit_message = "\n".join(file_commit_dict.values())
-        repo.git.commit("-m", commit_message)
-        ezcommit_logger.info(f"Committed with message: '{commit_message}'")
+        for file_path, commit_message in file_commit_dict.items():
+            # Commit just this staged file with its message
+            repo.git.commit("-m", commit_message, file_path)
+            ezcommit_logger.info(f"Committed {file_path} with message: '{commit_message}'")
     except Exception as e:
         ezcommit_logger.error(f"Error committing: {e}")
 
