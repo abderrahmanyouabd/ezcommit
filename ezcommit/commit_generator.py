@@ -24,6 +24,18 @@ def get_prompt(xml_str):
     ```
     """
 
+def get_unified_prompt(xml_str):
+    return f"""
+    Please take the following XML structure that represents file diffs for multiple files:
+    ```xml
+    {xml_str}
+    ```
+    Analyze all the changes across all files and generate a SINGLE unified commit message that describes the overall feature or change.
+    All these files are part of the same feature/change and should be described together.
+    Use Git commit standards and conventions for commit messages: <type>[optional scope]: <description>.
+    Return ONLY the commit message text, with no JSON structure, no code blocks, no extra explanation.
+    """
+
 client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
 
 ###### generator logger ######
@@ -126,6 +138,30 @@ def generate_commit_message(xml_str: str):
         ezcommit_logger.error(f"Error in generating commit message: {e}")
         return None
 
+def generate_unified_commit_message(xml_str: str):
+    """Generate a single unified commit message for all changes."""
+    try:
+        model_name = os.getenv("MODEL_NAME", "")
+        if not model_name:
+            ezcommit_logger.error("MODEL NAME/ID is Missing. export MODEL_NAME=******")
+            print("ERROR: MODEL NAME/ID is Missing. export MODEL_NAME=******")
+            return None
+        
+        response = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": get_unified_prompt(xml_str),
+                }
+            ],
+            model=model_name,
+            stream=False,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        ezcommit_logger.error(f"Error in generating unified commit message: {e}")
+        return None
+
 def get_json_as_dict(json_str: str):
     try:
         return json.loads(json_str)
@@ -142,7 +178,17 @@ def commit_staged_files_with_messages(repo: git.Repo, file_commit_dict: dict):
     except Exception as e:
         ezcommit_logger.error(f"Error committing: {e}")
 
-def ezcommit(repo_path="."):
+def commit_all_staged_files_unified(repo: git.Repo, commit_message: str):
+    """Commit all staged files together with a single unified message."""
+    try:
+        repo.git.commit("-m", commit_message)
+        ezcommit_logger.info(f"Committed all staged files with unified message: '{commit_message}'")
+        print(f"✓ Committed all staged files with message: '{commit_message}'")
+    except Exception as e:
+        ezcommit_logger.error(f"Error committing: {e}")
+        print(f"ERROR: Failed to commit: {e}")
+
+def ezcommit(repo_path=".", unified=False):
     try:
         if not os.getenv("GROQ_API_KEY"):
             ezcommit_logger.error("API KEY ENV var is Missing. export GROQ_API_KEY=******")
@@ -161,18 +207,31 @@ def ezcommit(repo_path="."):
         diffs = generate_file_diffs(repo, staged_files, renamed_files, removed_files)
         xml_input = create_input_for_llm(diffs)
         
-        json_message = generate_commit_message(xml_input)
-        if not json_message:
-            ezcommit_logger.error("Failed to generate valid commit messages")
-            return
-        
-        file_commit_dict = get_json_as_dict(json_message)
-        if not file_commit_dict:
-            ezcommit_logger.error("Empty commit dictionary")
-            return
+        if unified:
+            # Unified mode: generate a single commit message for all files
+            ezcommit_logger.info("Using unified commit mode")
+            unified_message = generate_unified_commit_message(xml_input)
+            if not unified_message:
+                ezcommit_logger.error("Failed to generate unified commit message")
+                return
             
-        ezcommit_logger.info(f"File commit dictionary: {file_commit_dict}")
-        commit_staged_files_with_messages(repo, file_commit_dict)
+            ezcommit_logger.info(f"Unified commit message: {unified_message}")
+            commit_all_staged_files_unified(repo, unified_message)
+        else:
+            # Individual mode: generate separate commit messages for each file
+            ezcommit_logger.info("Using individual commit mode")
+            json_message = generate_commit_message(xml_input)
+            if not json_message:
+                ezcommit_logger.error("Failed to generate valid commit messages")
+                return
+            
+            file_commit_dict = get_json_as_dict(json_message)
+            if not file_commit_dict:
+                ezcommit_logger.error("Empty commit dictionary")
+                return
+                
+            ezcommit_logger.info(f"File commit dictionary: {file_commit_dict}")
+            commit_staged_files_with_messages(repo, file_commit_dict)
         
     except Exception as e:
         ezcommit_logger.error(f"Error in ezcommit process: {e}")

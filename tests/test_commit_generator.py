@@ -4,13 +4,16 @@ import git
 import os
 from ezcommit.commit_generator import (
     get_prompt,
+    get_unified_prompt,
     get_staged_files,
     generate_file_diffs,
     create_input_for_llm,
     extract_json_structure,
     generate_commit_message,
+    generate_unified_commit_message,
     get_json_as_dict,
     commit_staged_files_with_messages,
+    commit_all_staged_files_unified,
     ezcommit
 )
 
@@ -164,3 +167,69 @@ def test_ezcommit_missing_api_key():
     # The function should return early when API key is missing
     result = ezcommit(".")
     assert result is None  # Function returns None when API key is missing
+
+def test_get_unified_prompt():
+    xml_str = "<test>data</test>"
+    result = get_unified_prompt(xml_str)
+    assert isinstance(result, str)
+    assert xml_str in result
+    assert "SINGLE unified commit message" in result
+    assert "```xml" in result
+
+@patch('ezcommit.commit_generator.client')
+def test_generate_unified_commit_message(mock_client):
+    # Mock the Groq client response
+    mock_response = Mock()
+    mock_response.choices = [Mock()]
+    mock_response.choices[0].message.content = 'feat: implement user authentication system'
+    mock_client.chat.completions.create.return_value = mock_response
+
+    # Set environment variable
+    os.environ["MODEL_NAME"] = "test-model"
+    
+    result = generate_unified_commit_message("<test>xml</test>")
+    assert result == 'feat: implement user authentication system'
+
+def test_commit_all_staged_files_unified(mock_repo):
+    commit_message = "feat: implement new feature across multiple files"
+    
+    commit_all_staged_files_unified(mock_repo, commit_message)
+    
+    # Verify single commit was made with all staged files
+    mock_repo.git.commit.assert_called_once_with("-m", commit_message)
+
+@patch('ezcommit.commit_generator.git.Repo')
+@patch('ezcommit.commit_generator.generate_unified_commit_message')
+def test_ezcommit_unified_mode(mock_generate_unified, mock_repo_class):
+    # Setup environment
+    os.environ["GROQ_API_KEY"] = "test-key"
+    os.environ["MODEL_NAME"] = "test-model"
+    
+    # Mock repository
+    mock_repo = Mock()
+    mock_repo_class.return_value = mock_repo
+    mock_repo.bare = False
+    
+    # Mock all the different git diff calls
+    mock_repo.git.diff.side_effect = [
+        "file1.py\nfile2.py",  # for get_staged_files
+        "",                     # for renamed files
+        "",                     # for removed files
+        "diff --git a/file1.py b/file1.py\n+some changes",  # for generate_file_diffs file1
+        "diff --git a/file2.py b/file2.py\n+more changes"   # for generate_file_diffs file2
+    ]
+    
+    mock_repo.head.is_valid.return_value = True
+    mock_repo.head.reference.is_valid.return_value = True
+    
+    # Mock unified commit message generation
+    mock_generate_unified.return_value = 'feat: implement authentication system'
+    
+    # Run ezcommit with unified mode
+    with patch('sys.exit') as mock_exit:
+        ezcommit(".", unified=True)
+        mock_exit.assert_not_called()
+    
+    # Verify the unified commit was made
+    mock_repo.git.commit.assert_called_once_with("-m", 'feat: implement authentication system')
+

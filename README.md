@@ -20,8 +20,20 @@ git add .
 ```
 
 2. Generate commit messages and commit:
+
+**Individual commits (default):** Each staged file gets its own commit with a unique message
 ```bash
 ezcommit -run
+```
+
+**Unified commit:** All staged files are committed together with a single unified message (useful when all changes are part of the same feature)
+```bash
+ezcommit -run --unified
+```
+
+**Custom repository path:**
+```bash
+ezcommit -run --path /path/to/repo
 ```
 
 ## Configuration
