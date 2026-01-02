@@ -6,7 +6,7 @@ with open("README.md", encoding="utf-8") as f:
 
 setup(
     name="effort-zero-commit",
-    version="0.1.3",
+    version="0.1.4",
     author="Abderrahman Youabd",
     author_email="youabd50@gmail.com",
     description="Automated Git commit message generator using AI",
